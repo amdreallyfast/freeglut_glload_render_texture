@@ -21,7 +21,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{76BCB793-0241-443D-AD0F-C1B2F6C33F9B}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>freeglut_glload_render_texture</RootNamespace>
+    <RootNamespace>render_texture_basic</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

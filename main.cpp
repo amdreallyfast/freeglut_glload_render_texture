@@ -38,9 +38,26 @@
 // for printf(...)
 #include <stdio.h>
 
+#define DEBUG
+
+// these should really be encapsulated off in some structure somewhere, but for the sake of this
+// barebones demo, keep them here
 GLint gUniformTextureLocation;
 GLuint gVaoId;
+GLuint gTextureId;
 
+/*-----------------------------------------------------------------------------------------------
+Description:
+    This is some kind of assistant debugger function that is called at startup that I found while
+    doing some tutorial awhile back.  I don't know what it does, but I keep it around.
+Parameters:
+    Unknown.  The function pointer is provided to glDebugMessageCallbackARB(...), and that
+    function is responsible for calling this one as it sees fit.
+Returns:    None
+Exception:  Safe
+Creator:
+    John Cox (2014)
+-----------------------------------------------------------------------------------------------*/
 void APIENTRY DebugFunc(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
     const GLchar* message, const GLvoid* userParam)
 {
@@ -78,19 +95,45 @@ void APIENTRY DebugFunc(GLenum source, GLenum type, GLuint id, GLenum severity, 
         errorType.c_str(), srcName.c_str(), typeSeverity.c_str(), message);
 }
 
-GLuint CreateTexture(const GLuint vaoId)
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Encapsulates the creation of a texture.  It tries to cover all the basics and be as self-
+    contained as possible, only returning a texture ID when it is finished.
+Parameters: None
+Returns:    
+    The OpenGL ID of the texture that was created.
+Exception:  Safe
+Creator:
+    John Cox (2-24-2016)
+-----------------------------------------------------------------------------------------------*/
+GLuint CreateTexture()
 {
-    // bind the vertex array so that any texture binding that happens in here will be recorded in it
-    glBindVertexArray(vaoId);
-
-    // create a 2D texture buffer and bind it
+    // create a 2D texture buffer
     GLuint textureId;
-    glActiveTexture(GL_TEXTURE0);
     glGenTextures(1, &textureId);
+
+    // bind the generated texture (it's a buffer, but I'll keep calling it "texture") to the 
+    // OpenGL texture unit 0
+    // Note: This is default behavior, which is perhaps why many tutorials skip it, but this 
+    // program is for posterity, so I am trying to be thorough.
+    //??why does making a mismatch between the one in here and the one in display() not cause a 
+    // problem??
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textureId);
-    
-    // instruct the (??should go where rendering goes??)
-    glUniform1i(gUniformTextureLocation, 0);
+
+    // these are some kind of standard texture settings for how to magnify it (detail when 
+    // zooming in), "minify" it (detail when zooming out), and set tiling.
+    // Note: I don't know how these work or what they do in detail, but they seem to be common
+    // in a few texture tutorials.
+    //??why wouldn't the program work at all without the "min filter"? it'll work without the
+    // other glTexParameteri(...) settings, but not without the "min filter"??
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);   // "S" is texture X axis
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);   // "T" is texture Y axis
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);   // "zoom in"
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);   // "zoom out"
+
+    //??do this? http://www.gamedev.net/page/resources/_/technical/opengl/opengl-texture-mapping-an-introduction-r947??)
+    //glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
     // create a texture out of RGB values
     // Note: The function glTexImage2D(...) is how texture data is sent to the GPU.  The 
@@ -141,7 +184,7 @@ GLuint CreateTexture(const GLuint vaoId)
 
             // this array-style assignment is only possible when the struct has no methods 
             // Note: Even a constructor that takes nothing and does nothing will prevent this.
-            texel t = { 0.0f, 0.0f, 0.0f };
+            texel t = { 0.0f, 0.0f, 0.0f, 0.0f };
             if (rowCounter < (MAX_TEXEL_ROWS / 3))
             {
                 // bottom third, so red
@@ -163,6 +206,10 @@ GLuint CreateTexture(const GLuint vaoId)
         }
     }
 
+    // ??when to use this??
+    //glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    // finally, upload the texture to the GPU
     GLint level = 0;                    // some kind of "detail" thing (leave at 0)
     GLenum type = GL_FLOAT;             // type is float
     GLenum format = GL_RGBA;            // texel data provided as 4-float sets
@@ -172,28 +219,45 @@ GLuint CreateTexture(const GLuint vaoId)
     GLint border = 0;                   // documentation says 0 (must be legacy)
     glTexImage2D(GL_TEXTURE_2D, level, internalFormat, width, height, border, format, type, crudeTextureArr);
 
-    return textureId;
+    // clean up bindings
+    glBindTexture(GL_TEXTURE_2D, 0);
 
+    // give back a handle to what was created
+    return textureId;
 }
 
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Encapsulates the creation of vertices, including the texture coordinates of each vertex.  It 
+    tries to cover all the basics and be as self-contained as possible, only returning a VAO ID 
+    when it is finished.
+Parameters: None
+Returns:
+    The OpenGL ID of the VAO that was created.
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 GLuint CreateGeometry()
 {
-    // this doesn't strictly need to be static because the gl*Data(...) functions (called later 
-    // in this same function) will send it off to the GPU, and then it won't be needed in system 
-    // memory
+    // center the triangle on the texture, whose texture coordinates are[0, 1]
+    // Note: This doesn't strictly need to be static because the gl*Data(...) functions (called 
+    // later in this same function) will send it off to the GPU, and then it won't be needed in 
+    // system memory.
     GLfloat localVerts[] =
     {
-        -0.5f, -0.5f, -1.0f,          // (pos) left bottom corner
-        +1.0f, +0.0f, +0.0f,          // (color) red
+        -0.5f, -0.5f, -1.0f,        // (pos) left bottom corner
+        +0.0f, +0.0f,               // texel at bottom left of texture
 
-        +0.5f, -0.5f, -1.0f,          // (pos) right bottom corner
-        +0.0f, +1.0f, +0.0f,          // (color) green
+        +0.5f, -0.5f, -1.0f,        // (pos) right bottom corner
+        +1.0f, 0.0f,                // texel at bottom right of texture
 
-        +0.0f, +0.5f, -1.0f,          // (pos) center top
-        +0.0f, +0.0f, +1.0f,          // (color) blue
+        +0.0f, +0.5f, -1.0f,        // (pos) center top
+        +0.5f, +1.0f,               // texel at top center of texture
     };
 
-    // set the argument vertex array as the active one
+    // create a vertex array and bind it to the context (it is expected that glload's "init" 
+    // function has already been called, which sets up the OpenGL context)
     GLuint vertexArrayObjectId = 0;
     glGenVertexArrays(1, &vertexArrayObjectId);
     glBindVertexArray(vertexArrayObjectId);
@@ -221,21 +285,22 @@ GLuint CreateGeometry()
     unsigned int bufferStartByteOffset = 0;
     const unsigned int NUM_THINGS = 3;          // 3 floats per vertex array index
     const unsigned int BYTES_PER_THING = 12;    // 3 floats at 4 bytes per
-    const unsigned int BYTES_PER_VERT = 24;     // 3 pos + 3 color
+    const unsigned int BYTES_PER_VERT = 20;     // attribute pattern repeats every 5 floats
 
-    // position 
+    // position attribute (3 floats (12 bytes) per)
+    // Note: 3 floats (12 bytes) per attribute,
     glEnableVertexAttribArray(vertexArrayIndex);
-    glVertexAttribPointer(vertexArrayIndex, NUM_THINGS, GL_FLOAT, GL_FALSE,
-        BYTES_PER_VERT, (void *)bufferStartByteOffset);
-    bufferStartByteOffset += BYTES_PER_THING;   // byte offset now 12
+    glVertexAttribPointer(vertexArrayIndex, 3, GL_FLOAT, GL_FALSE, BYTES_PER_VERT, 
+        (void *)bufferStartByteOffset);
+    bufferStartByteOffset += 12;   // 12 bytes after attribute start
 
-    // color
-    // Note: Don't forget (as I did) to increment to the next component or the color in the 
+    // texture coord (2 floats (8 bytes) per)
+    // Note: Don't forget (as I did) to increment to the next attribute or the attribute in the 
     // vertex shader will be a zero vector (that is, won't get set).
     vertexArrayIndex++; 
     glEnableVertexAttribArray(vertexArrayIndex);
-    glVertexAttribPointer(vertexArrayIndex, NUM_THINGS, GL_FLOAT, GL_FALSE,
-        BYTES_PER_VERT, (void *)bufferStartByteOffset);
+    glVertexAttribPointer(vertexArrayIndex, 2, GL_FLOAT, GL_FALSE, BYTES_PER_VERT, 
+        (void *)bufferStartByteOffset);
 
     // index data
     // Note: In order to draw, OpenGL needs point data.  Triangles always need three points 
@@ -265,6 +330,18 @@ GLuint CreateGeometry()
     return vertexArrayObjectId;
 }
 
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Encapsulates the creation of an OpenGL GPU program, including the compilation and linking of 
+    shaders.  It tries to cover all the basics and the error reporting and is as self-contained 
+    as possible, only returning a program ID when it is finished.
+Parameters: None
+Returns:
+    The OpenGL ID of the GPU program.
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 GLuint CreateProgram()
 {
     // hard-coded ignoring possible errors like a boss
@@ -354,93 +431,83 @@ GLuint CreateProgram()
     return programId;
 }
 
-void init()
-{
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
+/*-----------------------------------------------------------------------------------------------
+Description:
+    This is the rendering function.  It tells OpenGL to clear out some color and depth buffers,
+    to set up the data to draw, to draw than stuff, and to report any errors that it came across.
+    This is not a user-called function.
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LEQUAL);
-    glDepthRange(0.0f, 1.0f);
-
-    GLuint programId = CreateProgram();
-    glUseProgram(programId);
-    gUniformTextureLocation = glGetUniformLocation(programId, "tex");
-    if (gUniformTextureLocation == -1)
-    {
-        fprintf(stderr, "Could not bind uniform %s\n", "tex");
-        //??throw a fit or continue??
-    }
-
-    // the vertex array buffer is needed to ??
-    gVaoId = CreateGeometry();
-    GLuint textureId = CreateTexture(gVaoId);
-}
-
-//Called to update the display.
-//You should call glutSwapBuffers after all of your rendering to display what you rendered.
-//If you need continuous updates of the screen, call glutPostRedisplay() at the end of the function.
+    This function is registered with glutDisplayFunc(...) during glut's initialization.
+Parameters: None
+Returns:    None
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 void display()
 {
+    // clear existing data
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClearDepth(1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glBindVertexArray(gVaoId);
-    glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
-    GLenum err = glGetError();
-    if (GL_NO_ERROR != err)
-    {
-        switch (err)
-        {
-        case GL_INVALID_ENUM:
-            printf("GL error: GL_INVALID_ENUM\n");
-            break;
-        case GL_INVALID_VALUE:
-            printf("GL error: GL_INVALID_VALUE\n");
-            break;
-        case GL_INVALID_OPERATION:
-            printf("GL error: GL_INVALID_OPERATION\n");
-            break;
-        case GL_STACK_OVERFLOW:
-            printf("GL error: GL_STACK_OVERFLOW\n");
-            break;
-        case GL_STACK_UNDERFLOW:
-            printf("GL error: GL_STACK_UNDERFLOW\n");
-            break;
-        case GL_OUT_OF_MEMORY:
-            printf("GL error: GL_OUT_OF_MEMORY\n");
-            break;
-        case GL_INVALID_FRAMEBUFFER_OPERATION:
-            printf("GL error: GL_INVALID_FRAMEBUFFER_OPERATION\n");
-            break;
-        //case GL_CONTEXT_LOST: // OpenGL 4.5 or higher
-        //    break;
-        case GL_TABLE_TOO_LARGE:
-            printf("GL error: GL_TABLE_TOO_LARGE\n");
-            break;
-        default:
-            printf("GL error: UNKNOWN\n");
-            break;
-        }
-    }
 
+    // set up the data to draw
+    glUniform1i(gUniformTextureLocation, 0);
+    glBindVertexArray(gVaoId);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gTextureId);
+
+    // do the thing
+    glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
+
+    // tell the GPU to swap out the displayed buffer with the one that was just rendered
     glutSwapBuffers();
+
+    // tell glut to call this display() function again on the next iteration of the main loop
+    // Note: https://www.opengl.org/discussion_boards/showthread.php/168717-I-dont-understand-what-glutPostRedisplay()-does
     glutPostRedisplay();
+
+    // clean up bindings
+    // Note: This is just good practice, but in reality the bindings can be left as they were 
+    // and re-bound on each new call to this rendering function.
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-//Called whenever the window is resized. The new window size is given, in pixels.
-//This is an opportunity to call glViewport or glScissor to keep up with the change in size.
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Tell's OpenGL to resize the viewport based on the arguments provided.  This is not a 
+    user-called function.
+
+    This function is registered with glutReshapeFunc(...) during glut's initialization.
+Parameters: 
+    w   The width of the window in pixels.
+    h   The height of the window in pixels.
+Returns:    None
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 void reshape(int w, int h)
 {
     glViewport(0, 0, w, h);
 }
 
-//Called whenever a key on the keyboard was pressed.
-//The key is given by the ''key'' parameter, which is in ASCII.
-//It's often a good idea to have the escape key (ASCII value 27) call glutLeaveMainLoop() to 
-//exit the program.
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Executes some kind of command when the user presses a key on the keyboard.  This is not a 
+    user-called function.
+
+    This function is registered with glutKeyboardFunc(...) during glut's initialization.
+Parameters: 
+    key     The ASCII code of the key that was pressed (ex: ESC key is 27)
+    x       ??
+    y       ??
+Returns:    None
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 void keyboard(unsigned char key, int x, int y)
 {
     switch (key)
@@ -456,56 +523,179 @@ void keyboard(unsigned char key, int x, int y)
     }
 }
 
-//Called before FreeGLUT is initialized. It should return the FreeGLUT
-//display mode flags that you want to use. The initial value are the standard ones
-//used by the framework. You can modify it or just return you own set.
-//This function can also set the width/height of the window. The initial
-//value of these variables is the default, but you can change it.
+/*-----------------------------------------------------------------------------------------------
+Description:
+    ??what does it do? I picked it up awhile back and haven't changed it??
+Parameters:
+    displayMode     ??
+    width           ??
+    height          ??
+Returns:    
+    ??what??
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
 unsigned int defaults(unsigned int displayMode, int &width, int &height) 
 { 
     return displayMode; 
 }
 
-int main(int argc, char *argv[])
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Governs window creation, the initial OpenGL configuration (face culling, depth mask, even
+    though this is a 2D demo and that stuff won't be of concern), the creation of geometry, and
+    the creation of a texture.
+Parameters:
+    argc    (From main(...)) The number of char * items in argv.  For glut's initialization.
+    argv    (From main(...)) A collection of argument strings.  For glut's initialization.
+Returns:
+    False if something went wrong during initialization, otherwise true;
+Exception:  Safe
+Creator:
+    John Cox (3-7-2016)
+-----------------------------------------------------------------------------------------------*/
+bool init(int argc, char *argv[])
 {
     glutInit(&argc, argv);
 
-    int width = 500;
-    int height = 500;
+    // I don't know what this is doing, but it has been working, so I'll leave it be for now
+    int windowWidth = 500;  // square 500x500 pixels
+    int windowHeight = 500;
     unsigned int displayMode = GLUT_DOUBLE | GLUT_ALPHA | GLUT_DEPTH | GLUT_STENCIL;
-    displayMode = defaults(displayMode, width, height);
-
+    displayMode = defaults(displayMode, windowWidth, windowHeight);
     glutInitDisplayMode(displayMode);
-    glutInitContextVersion(4, 4);
-    glutInitContextProfile(GLUT_CORE_PROFILE);
-#ifdef DEBUG
-    glutInitContextFlags(GLUT_DEBUG);
-#endif
-    glutInitWindowSize(width, height);
-    glutInitWindowPosition(300, 200);
+
+    // create the window
+    // ??does this have to be done AFTER glutInitDisplayMode(...)??
+    glutInitWindowSize(windowWidth, windowHeight);
+    glutInitWindowPosition(300, 200);   // X = 0 is screen left, Y = 0 is screen top
     int window = glutCreateWindow(argv[0]);
-
-    glload::LoadTest glLoadGood = glload::LoadFunctions();
-    // ??check return value??
-
     glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION);
 
-    // the "is version" check is an "is at least version" check
-    if (!glload::IsVersionGEQ(3, 3))
+    // OpenGL 4.3 was where internal debugging was enabled, freeing the user from having to call
+    // glGetError() and analyzing it after every single OpenGL call, complete with surrounding it
+    // with #ifdef DEBUG ... #endif blocks
+    // Note: https://blog.nobel-joergensen.com/2013/02/17/debugging-opengl-part-2-using-gldebugmessagecallback/
+    int glMajorVersion = 4;
+    int glMinorVersion = 4;
+    glutInitContextVersion(glMajorVersion, glMinorVersion);
+    glutInitContextProfile(GLUT_CORE_PROFILE);
+#ifdef DEBUG
+    glutInitContextFlags(GLUT_DEBUG);   // if enabled, 
+#endif
+
+                                        // glload must load AFTER glut loads the context
+    glload::LoadTest glLoadGood = glload::LoadFunctions();
+    if (!glLoadGood)    // apparently it has an overload for "bool type"
     {
-        printf("Your OpenGL version is %i, %i. You must have at least OpenGL 3.3 to run this tutorial.\n",
-            glload::GetMajorVersion(), glload::GetMinorVersion());
+        printf("glload::LoadFunctions() failed\n");
+        return false;
+    }
+    else if (!glload::IsVersionGEQ(glMajorVersion, glMinorVersion))
+    {
+        // the "is version" check is an "is at least version" check
+        printf("Your OpenGL version is %i, %i. You must have at least OpenGL %i.%i to run this tutorial.\n",
+            glload::GetMajorVersion(), glload::GetMinorVersion(), glMajorVersion, glMinorVersion);
         glutDestroyWindow(window);
         return 0;
     }
-
-    if (glext_ARB_debug_output)
+    else if (glext_ARB_debug_output)
     {
+        // condition will be true if GLUT_DEBUG is a context flag
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
         glDebugMessageCallbackARB(DebugFunc, (void*)15);
     }
 
-    init();
+    // these OpenGL initializations are for 3D stuff, where depth matters and multiple shapes can
+    // be "on top" of each other relative to the most distant thing rendered, and this barebones 
+    // code is only for 2D stuff, but initialize them anyway as good practice (??bad idea? only 
+    // use these once 3D becomes a thing??)
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LEQUAL);
+    glDepthRange(0.0f, 1.0f);
+
+    GLuint programId = CreateProgram();
+    glUseProgram(programId);
+    gUniformTextureLocation = glGetUniformLocation(programId, "tex");
+    if (gUniformTextureLocation == -1)
+    {
+        fprintf(stderr, "Could not bind uniform %s\n", "tex");
+        //??throw a fit or continue??
+    }
+
+    // create the vertices for the geometry (and the texture coordinates that go with each 
+    // vertex) and the texture that will be used to color it
+    // Note: The VAO and texture will be bound at render time (see display()).
+    gVaoId = CreateGeometry();
+    gTextureId = CreateTexture();
+
+    // all went well
+    return true;
+}
+
+/*-----------------------------------------------------------------------------------------------
+Description:
+    Program start and end.
+Parameters: 
+    argc    The number of strings in argv.
+    argv    A pointer to an array of null-terminated, C-style strings.
+Returns:
+    0 if program ended well, which it always does or it crashes outright, so returning 0 is fune
+Exception:  Safe
+Creator:
+    John Cox (2-13-2016)
+-----------------------------------------------------------------------------------------------*/
+int main(int argc, char *argv[])
+{
+//    glutInit(&argc, argv);
+//
+//    int width = 500;
+//    int height = 500;
+//    unsigned int displayMode = GLUT_DOUBLE | GLUT_ALPHA | GLUT_DEPTH | GLUT_STENCIL;
+//    displayMode = defaults(displayMode, width, height);
+//
+//    glutInitDisplayMode(displayMode);
+//    glutInitContextVersion(4, 4);
+//    glutInitContextProfile(GLUT_CORE_PROFILE);
+//#ifdef DEBUG
+//    glutInitContextFlags(GLUT_DEBUG);
+//#endif
+//    glutInitWindowSize(width, height);
+//    glutInitWindowPosition(300, 200);
+//    int window = glutCreateWindow(argv[0]);
+//
+//    glload::LoadTest glLoadGood = glload::LoadFunctions();
+//    // ??check return value??
+//
+//    glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION);
+//
+//    // the "is version" check is an "is at least version" check
+//    if (!glload::IsVersionGEQ(3, 3))
+//    {
+//        printf("Your OpenGL version is %i, %i. You must have at least OpenGL 3.3 to run this tutorial.\n",
+//            glload::GetMajorVersion(), glload::GetMinorVersion());
+//        glutDestroyWindow(window);
+//        return 0;
+//    }
+//
+//    if (glext_ARB_debug_output)
+//    {
+//        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
+//        glDebugMessageCallbackARB(DebugFunc, (void*)15);
+//    }
+//
+//    init();
+    if (!init(argc, argv))
+    {
+        // bad initialization; it will take care of it's own error reporting
+        return 1;
+    }
+
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
