@@ -48,15 +48,16 @@ GLuint gTextureId;
 
 /*-----------------------------------------------------------------------------------------------
 Description:
-    This is some kind of assistant debugger function that is called at startup that I found while
-    doing some tutorial awhile back.  I don't know what it does, but I keep it around.
+    Rather than calling glGetError(...) every time I make an OpenGL call, I register this 
+    function as the debug callback.  If an error or any OpenGL message in general pops up, this 
+    prints it to the console.  I can turn it on and off by enabling and disabling the 
+    "#define DEBUG" statement in main(...).
 Parameters:
     Unknown.  The function pointer is provided to glDebugMessageCallbackARB(...), and that
     function is responsible for calling this one as it sees fit.
 Returns:    None
 Exception:  Safe
-Creator:
-    John Cox (2014)
+Creator:    John Cox (2014)
 -----------------------------------------------------------------------------------------------*/
 void APIENTRY DebugFunc(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
     const GLchar* message, const GLvoid* userParam)
@@ -103,8 +104,7 @@ Parameters: None
 Returns:    
     The OpenGL ID of the texture that was created.
 Exception:  Safe
-Creator:
-    John Cox (2-24-2016)
+Creator:    John Cox (2-24-2016)
 -----------------------------------------------------------------------------------------------*/
 GLuint CreateTexture()
 {
@@ -339,8 +339,7 @@ Parameters: None
 Returns:
     The OpenGL ID of the GPU program.
 Exception:  Safe
-Creator:
-    John Cox (2-13-2016)
+Creator:    John Cox (2-13-2016)
 -----------------------------------------------------------------------------------------------*/
 GLuint CreateProgram()
 {
@@ -441,8 +440,7 @@ Description:
 Parameters: None
 Returns:    None
 Exception:  Safe
-Creator:
-    John Cox (2-13-2016)
+Creator:    John Cox (2-13-2016)
 -----------------------------------------------------------------------------------------------*/
 void display()
 {
@@ -460,33 +458,42 @@ void display()
     // do the thing
     glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
 
+    // clean up bindings
+    // Note: This is just good practice, but for this barebones demo, the bindings can be left 
+    // as they were and re-bound on each new call to this rendering function.
+    // Also Note: I also do this because I got bit by leaving it bound when I was working on 
+    // implementing FreeType into my main program.
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     // tell the GPU to swap out the displayed buffer with the one that was just rendered
     glutSwapBuffers();
 
     // tell glut to call this display() function again on the next iteration of the main loop
     // Note: https://www.opengl.org/discussion_boards/showthread.php/168717-I-dont-understand-what-glutPostRedisplay()-does
+    // Also Note: This display() function will also be registered to run if the window is moved
+    // or if the viewport is resized.  If glutPostRedisplay() is not called, then as long as the
+    // window stays put and doesn't resize, display() won't be called again (tested with 
+    // debugging).
+    // Also Also Note: It doesn't matter where this is called in this function.  It sets a flag
+    // for glut's main loop and doesn't actually call the registered display function, but I 
+    // got into the habbit of calling it at the end.
     glutPostRedisplay();
-
-    // clean up bindings
-    // Note: This is just good practice, but in reality the bindings can be left as they were 
-    // and re-bound on each new call to this rendering function.
-    glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 /*-----------------------------------------------------------------------------------------------
 Description:
-    Tell's OpenGL to resize the viewport based on the arguments provided.  This is not a 
-    user-called function.
+    Tell's OpenGL to resize the viewport based on the arguments provided.  This is an
+    opportunity to call glViewport or glScissor to keep up with the change in size.
 
-    This function is registered with glutReshapeFunc(...) during glut's initialization.
-Parameters: 
+    This is not a user-called function.  It is registered with glutReshapeFunc(...) during
+    glut's initialization.
+Parameters:
     w   The width of the window in pixels.
     h   The height of the window in pixels.
 Returns:    None
 Exception:  Safe
-Creator:
-    John Cox (2-13-2016)
+Creator:    John Cox (2-13-2016)
 -----------------------------------------------------------------------------------------------*/
 void reshape(int w, int h)
 {
@@ -495,18 +502,20 @@ void reshape(int w, int h)
 
 /*-----------------------------------------------------------------------------------------------
 Description:
-    Executes some kind of command when the user presses a key on the keyboard.  This is not a 
-    user-called function.
+    Executes when the user presses a key on the keyboard.
 
-    This function is registered with glutKeyboardFunc(...) during glut's initialization.
-Parameters: 
+    This is not a user-called function.  It is registered with glutKeyboardFunc(...) during
+    glut's initialization.
+
+    Note: Although the x and y arguments are for the mouse's current position, this function does
+    not respond to mouse presses.
+Parameters:
     key     The ASCII code of the key that was pressed (ex: ESC key is 27)
-    x       ??
-    y       ??
+    x       The horizontal viewport coordinates of the mouse's current position.
+    y       The vertical window coordinates of the mouse's current position
 Returns:    None
 Exception:  Safe
-Creator:
-    John Cox (2-13-2016)
+Creator:    John Cox (2-13-2016)
 -----------------------------------------------------------------------------------------------*/
 void keyboard(unsigned char key, int x, int y)
 {
@@ -525,18 +534,23 @@ void keyboard(unsigned char key, int x, int y)
 
 /*-----------------------------------------------------------------------------------------------
 Description:
-    ??what does it do? I picked it up awhile back and haven't changed it??
+    I don't know what this does, but I've kept it around since early times, and this was the
+    comment given with it:
+
+    "Called before FreeGLUT is initialized. It should return the FreeGLUT display mode flags
+    that you want to use. The initial value are the standard ones used by the framework. You can
+    modify it or just return you own set.  This function can also set the width/height of the
+    window. The initial value of these variables is the default, but you can change it."
 Parameters:
     displayMode     ??
     width           ??
     height          ??
-Returns:    
+Returns:
     ??what??
 Exception:  Safe
-Creator:
-    John Cox (2-13-2016)
+Creator:    John Cox (2-13-2016)
 -----------------------------------------------------------------------------------------------*/
-unsigned int defaults(unsigned int displayMode, int &width, int &height) 
+unsigned int defaults(unsigned int displayMode, int &width, int &height)
 { 
     return displayMode; 
 }
@@ -552,8 +566,7 @@ Parameters:
 Returns:
     False if something went wrong during initialization, otherwise true;
 Exception:  Safe
-Creator:
-    John Cox (3-7-2016)
+Creator:    John Cox (3-7-2016)
 -----------------------------------------------------------------------------------------------*/
 bool init(int argc, char *argv[])
 {
